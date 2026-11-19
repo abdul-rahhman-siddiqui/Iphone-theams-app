@@ -21,3 +21,10 @@ Only private/LAN addresses are accepted, and a random token in the URL is requir
 
 ## Notes
 Video is sent as JPEG frames over WebSocket (simple, low-latency on LAN; no audio). Keep the iPhone screen on while streaming (the page requests a wake lock).
+
+## Link doesn't load on the iPhone?
+1. Same Wi-Fi? Not guest Wi-Fi or mobile data (guest networks often isolate devices).
+2. Check the IP in the link matches your PC's Wi-Fi IPv4 in `ipconfig`. If several links are printed, try the others.
+3. Right-click `allow_firewall.bat` -> Run as administrator, and make sure your Wi-Fi is set to **Private**.
+4. Open the link in a browser on the PC first. If that works but the phone doesn't, it's the firewall or network isolation.
+5. Fallback: turn on the iPhone's Personal Hotspot, connect the PC to it, and run again.

@@ -25,20 +25,25 @@ DATA_DIR = Path.home() / ".phonecam"
 
 # ---------- networking helpers ----------
 def local_ips():
-    ips = set()
+    """Private IPv4 addresses, default-route (real Wi-Fi/LAN) address first."""
+    primary = None
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("10.255.255.255", 1))  # no packets sent
-        ips.add(s.getsockname()[0])
+        primary = s.getsockname()[0]
         s.close()
     except OSError:
         pass
+    others = set()
     try:
         for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
-            ips.add(info[4][0])
+            others.add(info[4][0])
     except OSError:
         pass
-    return sorted(ip for ip in ips if not ip.startswith("127."))
+    others.discard(primary)
+    ok = lambda ip: not ip.startswith(("127.", "169.254.", "0."))
+    ips = ([primary] if primary and ok(primary) else []) + sorted(i for i in others if ok(i))
+    return ips
 
 
 def is_private(addr):
@@ -54,11 +59,11 @@ def ensure_cert(ips):
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
-    from cryptography.x509.oid import NameOID
+    from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
     DATA_DIR.mkdir(exist_ok=True)
     cert_p, key_p, ips_p = DATA_DIR / "cert.pem", DATA_DIR / "key.pem", DATA_DIR / "ips.txt"
-    wanted = ",".join(ips)
+    wanted = "v2:" + ",".join(ips)
     if cert_p.exists() and key_p.exists() and ips_p.exists() and ips_p.read_text() == wanted:
         return cert_p, key_p
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -71,6 +76,7 @@ def ensure_cert(ips):
         .not_valid_before(now - datetime.timedelta(days=1))
         .not_valid_after(now + datetime.timedelta(days=825))
         .add_extension(x509.SubjectAlternativeName(san), critical=False)
+        .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
         .sign(key, hashes.SHA256())
     )
     cert_p.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
@@ -177,7 +183,10 @@ def main():
 
     url = f"https://{ips[0]}:{args.port}/?t={token}"
     print("\nOpen this on your iPhone (same Wi-Fi), accept the certificate warning, tap Start:\n")
-    print("   ", url, "\n")
+    print("    " + url + "   <- try this first")
+    for ip in ips[1:]:
+        print(f"    https://{ip}:{args.port}/?t={token}")
+    print()
     try:
         import qrcode
         qr = qrcode.QRCode(border=1)
@@ -185,6 +194,17 @@ def main():
         qr.print_ascii(invert=True)
     except Exception:
         pass
+    time.sleep(0.5)
+    try:
+        c = socket.create_connection((ips[0], args.port), timeout=3)
+        c.close()
+        print(f"Self-check: server is listening on {ips[0]}:{args.port} (OK)")
+    except OSError as e:
+        print(f"Self-check FAILED ({e}). Is port {args.port} already in use? Try --port 8444")
+    print("If the page won't load on the iPhone:")
+    print("  1) iPhone must be on the SAME Wi-Fi (not guest/mobile data); the IP should match `ipconfig`.")
+    print("  2) Run allow_firewall.bat as Administrator (or allow Python on Private networks).")
+    print("  3) Try the link in a browser on this PC first.\n")
     print("Keys in preview window: q=quit  m=mirror  r=rotate 90\n")
 
     vcam = None
