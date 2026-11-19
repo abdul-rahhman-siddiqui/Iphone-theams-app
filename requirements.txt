@@ -1,0 +1,6 @@
+aiohttp>=3.9
+opencv-python>=4.8
+numpy>=1.24
+cryptography>=42
+pyvirtualcam>=0.11
+qrcode>=7.4
